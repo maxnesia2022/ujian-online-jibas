@@ -1,0 +1,16 @@
+{
+    "files": {
+        "assets/alpine.min.js": "76faf240329ceb9c1f608388681f14432e979c5ec63d391e57180c6d29a95ebe",
+        "assets/exam-app.css": "3dcb9649a68a2c2fb00ab99e02422f354c5a50da94fda7ec3902da1397d0dd03",
+        "assets/exam-app.js": "65afaef2661f136063875fc9b1a619c519f1d22bbe540be71f938a4386c6b417",
+        "assets/jquery-shim.js": "c4f07da573a838d6fdc5ef8f14b79dc3fce5c5f11ee152ecb71e3d4e79671850",
+        "assets/kiosk-integration.js": "19d33e6ed4f6891950c939fd2a1b6ad9603fe855b5a240d021e8397aea65a668",
+        "assets/sweetalert2.min.js": "72b663515d0f1bd78b89666de576f2465466f4a5d235024db7dc2c7a6f95ab2e",
+        "dashboard.html": "acfc9766eeca6932b4711fe2fda5a813c003df2eace6daf21edbeb545b0658fd",
+        "exam.html": "0029ac6a5582586b0548e9c4f1f8073f0fa1b9635acdfe1a1cac353a55e2a947",
+        "login.html": "ded9cebac92bf94d75bac5e31160656911a2e04c28776b6ad05899844caafdf2",
+        "results.html": "91d86e39038a4d47fec13bee733adf7500d7b5f446f68959972669fe0a29a6ff",
+        "review.html": "5183dc5d4d131db0d8c542da9c1398a5808314a2110fff17d2aa84389bb17a20"
+    },
+    "version": "4e91a361686f5c17d6d1094a2be3b27495f41bf6379b3b8834ca03287ca03c1e"
+}

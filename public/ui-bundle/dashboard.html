@@ -1,0 +1,420 @@
+<!-- DEBUG-VIEW START 7 APPPATH\Views\bundle\dashboard.php -->
+<!-- DEBUG-VIEW START 5 APPPATH\Views\bundle\_head.php -->
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <script src="assets/kiosk-integration.js"></script>
+    <link rel="stylesheet" href="assets/exam-app.css?v=65afaef2661f">
+    <script>
+        window.KIOSK_BUNDLE = true;
+        window.__KIOSK_BUNDLE__ = true;
+        (function () {
+            var params = new URLSearchParams(window.location.search);
+            var serverParam = params.get('server');
+            var savedServer = null;
+            try { savedServer = localStorage.getItem('kiosk_base_url'); } catch (e) {}
+            var resolvedBase = serverParam || savedServer || "http:\/\/192.168.43.153:8080";
+            if (resolvedBase) {
+                try { localStorage.setItem('kiosk_base_url', resolvedBase); } catch (e) {}
+            }
+            window.KIOSK_BASE_URL = resolvedBase;
+        })();
+        window.KIOSK_WS_URL = "ws:\/\/192.168.43.153:8060\/ws";
+
+        // Sinkronisasi sesi Kiosk WebView (cross-origin / debug mode):
+        // Otomatis sertakan X-Session-ID dan Authorization header pada setiap request fetch,
+        // menjamin autentikasi sesi tetap aktif walau cookie pihak ketiga diblokir oleh WebView.
+        (function () {
+            var origFetch = window.fetch;
+            window.fetch = function (url, options) {
+                options = options || {};
+                var sessId = null;
+                try { sessId = localStorage.getItem('kiosk_session_id'); } catch (e) {}
+                if (sessId) {
+                    options.headers = options.headers || {};
+                    if (options.headers instanceof Headers) {
+                        if (!options.headers.has('X-Session-ID')) options.headers.append('X-Session-ID', sessId);
+                        if (!options.headers.has('Authorization')) options.headers.append('Authorization', 'Bearer ' + sessId);
+                    } else if (Array.isArray(options.headers)) {
+                        options.headers.push(['X-Session-ID', sessId]);
+                        options.headers.push(['Authorization', 'Bearer ' + sessId]);
+                    } else {
+                        if (!options.headers['X-Session-ID']) options.headers['X-Session-ID'] = sessId;
+                        if (!options.headers['Authorization']) options.headers['Authorization'] = 'Bearer ' + sessId;
+                    }
+                }
+                return origFetch.call(this, url, options);
+            };
+        })();
+    </script>
+    <style>
+        /* Design system kiosk — kontras tinggi, target sentuh besar.
+           Sasaran: HP kelas bawah (mis. Redmi 10A 720x1600) dengan layar redup,
+           dipakai siswa yang gugup. Prioritas: keterbacaan > dekorasi.
+           Tanpa webfont (anggaran bundle); hanya system font stack. */
+        :root {
+            --kiosk-bg: #f1f5f9; --kiosk-card: #ffffff; --kiosk-ink: #0f172a;
+            --kiosk-muted: #475569; --kiosk-primary: #1d4ed8; --kiosk-primary-ink: #ffffff;
+            --kiosk-border: #cbd5e1; --kiosk-danger: #b91c1c; --kiosk-danger-bg: #fef2f2;
+            --kiosk-ok: #15803d; --kiosk-ok-bg: #f0fdf4; --kiosk-warn: #a16207;
+            --kiosk-ink-soft: #334155; --kiosk-surface-2: #f8fafc;
+            --kiosk-shadow: 0 1px 2px rgba(15, 23, 42, .06), 0 8px 24px rgba(15, 23, 42, .06);
+            /* Target sentuh minimum Android 48dp; 56px untuk aksi utama. */
+            --k-tap: 56px; --k-radius: 12px; --k-gap: 16px;
+            /* Poni dan bilah gestur Android: tanpa ini header nyelip di balik
+               status bar dan tombol terakhir ketiban bilah navigasi. */
+            --k-safe-top: env(safe-area-inset-top, 0px);
+            --k-safe-bottom: env(safe-area-inset-bottom, 0px);
+        }
+        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+        body {
+            margin: 0; background: var(--kiosk-bg); color: var(--kiosk-ink);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            font-size: 17px; line-height: 1.55;
+            -webkit-text-size-adjust: 100%;
+        }
+        .k-wrap { max-width: 560px; margin: 0 auto; padding: var(--k-gap);
+                  padding-bottom: calc(var(--k-gap) + var(--k-safe-bottom)); }
+        .k-card { background: var(--kiosk-card); border: 1px solid var(--kiosk-border);
+                  border-radius: var(--k-radius); padding: 20px; box-shadow: var(--kiosk-shadow); }
+
+        /* ── App bar: identitas sekolah, sama di semua halaman ──────────────
+           Alasannya bukan hiasan. Perangkat ujian dipegang siswa yang gugup di
+           ruangan asing; layar yang tidak menyebut sekolahnya terasa seperti
+           halaman uji coba, bukan lembar ujian resmi. */
+        .k-appbar {
+            display: flex; align-items: center; gap: 12px;
+            padding: calc(10px + var(--k-safe-top)) var(--k-gap) 10px;
+            background: var(--kiosk-card); border-bottom: 1px solid var(--kiosk-border);
+        }
+        .k-appbar__logo { width: 38px; height: 38px; flex: 0 0 auto;
+                          object-fit: contain; border-radius: 8px; }
+        .k-appbar__id { flex: 1; min-width: 0; }
+        .k-appbar__school { font-weight: 700; font-size: 16px; line-height: 1.25;
+                            white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .k-appbar__tagline { color: var(--kiosk-muted); font-size: 12px; letter-spacing: .02em;
+                             white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+        /* Judul halaman: konteks "saya sedang di mana" tanpa memakan satu layar. */
+        .k-pagehead { margin-bottom: var(--k-gap); }
+        .k-pagehead h1 { margin: 0 0 2px; }
+        .k-pagehead p { margin: 0; color: var(--kiosk-muted); font-size: 15px; }
+        h1, h2, h3 { margin: 0 0 12px; line-height: 1.3; }
+        h1 { font-size: 24px; } h2 { font-size: 20px; } h3 { font-size: 18px; }
+        .k-muted { color: var(--kiosk-muted); font-size: 15px; }
+
+        /* Tombol: tinggi penuh, teks 17px, tidak pernah mengecil di layar sempit. */
+        .k-btn {
+            display: flex; align-items: center; justify-content: center; gap: 8px;
+            width: 100%; min-height: var(--k-tap); padding: 12px 18px;
+            background: var(--kiosk-primary); color: var(--kiosk-primary-ink);
+            border: 0; border-radius: var(--k-radius);
+            font-size: 17px; font-weight: 600; font-family: inherit;
+            cursor: pointer; text-decoration: none;
+        }
+        .k-btn:active { filter: brightness(.92); }
+        .k-btn:disabled { opacity: .5; }
+        .k-btn--ghost { background: transparent; color: var(--kiosk-primary);
+                        border: 2px solid var(--kiosk-border); }
+        .k-btn--danger { background: var(--kiosk-danger); }
+        .k-btn--sm { min-height: 48px; font-size: 16px; width: auto; padding: 10px 16px; }
+
+        .k-input {
+            width: 100%; min-height: var(--k-tap); padding: 14px;
+            border: 2px solid var(--kiosk-border); border-radius: var(--k-radius);
+            font-size: 17px; font-family: inherit; background: #fff; color: inherit;
+        }
+        .k-input:focus { outline: none; border-color: var(--kiosk-primary); }
+        .k-label { display: block; font-weight: 600; font-size: 15px; margin-bottom: 6px; }
+
+        /* Kotak status: dipakai untuk error/sukses/info yang harus terbaca jelas. */
+        .k-note { border-radius: 10px; padding: 14px; font-size: 16px; border: 1px solid; }
+        .k-error { color: var(--kiosk-danger); background: var(--kiosk-danger-bg); border-color: #fecaca; }
+        .k-ok { color: var(--kiosk-ok); background: var(--kiosk-ok-bg); border-color: #bbf7d0; }
+
+        /* Bar identitas: siswa harus selalu tahu login sebagai siapa. */
+        .k-idbar {
+            display: flex; align-items: center; gap: 12px;
+            background: var(--kiosk-card); border-bottom: 1px solid var(--kiosk-border);
+            padding: 12px var(--k-gap);
+        }
+        .k-idbar__who { flex: 1; min-width: 0; }
+        .k-idbar__name { font-weight: 700; font-size: 16px;
+                         white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .k-idbar__sub { color: var(--kiosk-muted); font-size: 13px;
+                        white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+        /* Banner status simpan — menempel di atas viewport dan TIDAK hilang
+           sendiri; satu-satunya cara lenyap adalah jawaban berhasil tersimpan. */
+        /* sticky, bukan fixed: sebagai fixed banner ini menimpa bagian atas
+           soal justru ketika siswa paling perlu membacanya. Sticky tetap
+           menempel saat digulir tapi ikut memakan ruang, jadi tidak ada yang
+           tertutup. */
+        .k-savebar {
+            position: sticky; top: 0; z-index: 9999;
+            padding: 12px var(--k-gap); border-bottom: 3px solid;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, .18);
+        }
+        .k-savebar--bad { background: #fee2e2; border-color: var(--kiosk-danger); color: #7f1d1d; }
+        .k-savebar__title { font-weight: 700; font-size: 17px; }
+        .k-savebar__msg { font-size: 14px; margin-top: 2px; }
+
+        /* Toast peredam aksi (cadangan non-kiosk) — melayang di bawah agar
+           tidak menutupi soal maupun banner status simpan di atas. */
+        .k-ratetoast {
+            position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%);
+            z-index: 9998; max-width: 88vw;
+            background: rgba(15, 23, 42, .94); color: #fff;
+            padding: 12px 18px; border-radius: 999px;
+            font-size: 15px; text-align: center;
+            box-shadow: 0 4px 14px rgba(0, 0, 0, .25);
+        }
+
+        /* Konten dari editor guru (soal, jawaban esai, kunci) bebas isinya:
+           gambar berukuran asli, tabel lebar, kata panjang tanpa spasi. Tanpa
+           pagar ini semuanya menembus kartu dan bikin halaman melar ke samping. */
+        .k-card { overflow-wrap: anywhere; }
+        .k-card img, .k-note img {
+            max-width: 100%; height: auto; display: block;
+            margin: 12px 0; border: 1px solid var(--kiosk-border);
+            border-radius: 10px; background: #fff;
+        }
+        /* Tabel lebar digulir di dalam kartunya sendiri, bukan menggeser halaman. */
+        .k-card table { max-width: 100%; border-collapse: collapse; }
+        .k-card .table-responsive { max-width: 100%; overflow-x: auto; }
+        .k-card pre { max-width: 100%; overflow-x: auto; }
+
+        .k-row { display: flex; gap: 12px; }
+        .k-row > * { flex: 1; }
+        .k-stack > * + * { margin-top: 12px; }
+    </style>
+</head>
+
+<!-- DEBUG-VIEW ENDED 5 APPPATH\Views\bundle\_head.php -->
+<body>
+<!-- DEBUG-VIEW START 6 APPPATH\Views\bundle\_appbar.php -->
+<header class="k-appbar">
+        <div class="k-appbar__id">
+        <div class="k-appbar__school">Sistem Ujian</div>
+            </div>
+</header>
+
+<!-- DEBUG-VIEW ENDED 6 APPPATH\Views\bundle\_appbar.php -->
+<div class="k-idbar">
+    <div class="k-idbar__who">
+        <div class="k-idbar__name" id="whoName">&nbsp;</div>
+        <div class="k-idbar__sub" id="whoSub">memuat identitas…</div>
+    </div>
+    <button class="k-btn k-btn--ghost k-btn--sm" id="btnLogout" type="button">Keluar</button>
+</div>
+
+<div class="k-wrap">
+    <div class="k-pagehead">
+        <h1>Daftar Ujian</h1>
+        <p>Pilih ujian yang akan dikerjakan.</p>
+    </div>
+    <div id="list" class="k-stack">
+        <div class="k-card k-muted">Memuat daftar ujian…</div>
+    </div>
+</div>
+
+<script>
+    (function () {
+        var base = window.KIOSK_BASE_URL;
+        var list = document.getElementById('list');
+
+        function el(tag, cls, text) {
+            var n = document.createElement(tag);
+            if (cls) n.className = cls;
+            if (text !== undefined && text !== null) n.textContent = text;
+            return n;
+        }
+
+        // Waktu ditampilkan apa adanya dari server; klien tidak menghitung
+        // ulang jendela ujian karena jam perangkat kiosk tidak bisa dipercaya.
+        function jam(iso) {
+            if (!iso) return '';
+            var d = new Date(String(iso).replace(' ', 'T'));
+            if (isNaN(d)) return String(iso);
+            return d.toLocaleString('id-ID', {
+                day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit'
+            });
+        }
+
+        var BADGE = {
+            open:    ['Dapat dikerjakan', 'var(--kiosk-ok)',      'var(--kiosk-ok-bg)'],
+            resume:  ['Belum selesai',    'var(--kiosk-warn)',    '#fffbeb'],
+            done:    ['Sudah dikerjakan', 'var(--kiosk-muted)',   'var(--kiosk-surface-2)'],
+            locked:  ['Dikunci',          'var(--kiosk-danger)',  'var(--kiosk-danger-bg)'],
+            not_yet: ['Belum dibuka',     'var(--kiosk-muted)',   'var(--kiosk-surface-2)'],
+            closed:  ['Sudah berakhir',   'var(--kiosk-danger)',  'var(--kiosk-danger-bg)']
+        };
+
+        function badge(status) {
+            var b = BADGE[status] || BADGE.open;
+            var n = el('span', null, b[0]);
+            n.style.cssText = 'display:inline-block;padding:3px 10px;border-radius:999px;' +
+                'font-size:13px;font-weight:600;color:' + b[1] + ';background:' + b[2];
+            return n;
+        }
+
+        // Nama dan petunjuk ujian berasal dari input admin/guru — nama selalu
+        // lewat textContent. Petunjuk sengaja innerHTML karena memang ditulis
+        // guru lewat editor (gambar, penebalan), sama seperti di web.
+        function examCard(t) {
+            var av = t.availability || { status: 'open', message: '' };
+            var card = el('div', 'k-card');
+
+            var head = el('div');
+            head.style.cssText = 'display:flex;gap:8px;align-items:flex-start;justify-content:space-between';
+            var title = el('h3', null, t.name);
+            title.style.cssText = 'margin:0;flex:1;min-width:0';
+            head.appendChild(title);
+            head.appendChild(badge(av.status));
+            card.appendChild(head);
+
+            var meta = [];
+            meta.push(t.duration_minutes ? 'Durasi ' + t.duration_minutes + ' menit' : 'Tanpa batas waktu');
+            if (t.max_score) meta.push('Batas lulus ' + t.passing_score + '/' + t.max_score);
+            meta.push(t.is_repeatable ? 'Boleh diulang' : 'Sekali kerjakan');
+            if (t.password_required) meta.push('Perlu token');
+            var metaEl = el('p', 'k-muted', meta.join(' · '));
+            metaEl.style.margin = '8px 0 0';
+            card.appendChild(metaEl);
+
+            if (t.begin_time || t.end_time) {
+                var jendela = 'Dibuka ' + (t.begin_time ? jam(t.begin_time) : 'kapan saja') +
+                              ' · Ditutup ' + (t.end_time ? jam(t.end_time) : 'tanpa batas');
+                var w = el('p', 'k-muted', jendela);
+                w.style.cssText = 'margin:4px 0 0;font-size:13px';
+                card.appendChild(w);
+            }
+
+            if (av.message) {
+                var note = el('p', 'k-muted', av.message);
+                note.style.cssText = 'margin:10px 0 0;font-size:14px';
+                card.appendChild(note);
+            }
+
+            var btn = el('button', 'k-btn');
+            btn.type = 'button';
+            btn.style.marginTop = '14px';
+
+            if (av.status === 'resume') {
+                btn.textContent = 'Lanjutkan Ujian';
+                btn.onclick = function () { location.href = 'exam.html?test_id=' + t.id + '&resume=1'; };
+            } else if (av.status === 'done') {
+                btn.className = 'k-btn k-btn--ghost';
+                btn.textContent = 'Lihat Hasil';
+                btn.onclick = function () { location.href = 'results.html?test_id=' + t.id; };
+            } else if (av.status === 'open') {
+                btn.textContent = 'Kerjakan';
+                btn.onclick = function () { location.href = 'exam.html?test_id=' + t.id; };
+            } else {
+                // not_yet / closed / locked: tombolnya mati sejak awal, supaya
+                // siswa tidak masuk lalu terjebak di layar galat tanpa jalan
+                // keluar -- persis keluhan yang muncul di lapangan.
+                btn.className = 'k-btn k-btn--ghost';
+                btn.textContent = av.status === 'not_yet' ? 'Belum dapat dikerjakan' : 'Tidak dapat dikerjakan';
+                btn.disabled = true;
+            }
+            card.appendChild(btn);
+            return card;
+        }
+
+        function showError(msg, retry) {
+            list.innerHTML = '';
+            var box = el('div', 'k-note k-error', msg);
+            list.appendChild(box);
+            if (retry) {
+                var b = el('button', 'k-btn');
+                b.type = 'button';
+                b.textContent = 'Coba Lagi';
+                b.onclick = function () { location.reload(); };
+                list.appendChild(b);
+            }
+        }
+
+        fetch(base + '/api/student/exams', { credentials: 'include', headers: { 'Accept': 'application/json' } })
+            .then(function (r) { return r.json(); })
+            .then(function (j) {
+                if (j.status !== 'success') {
+                    try { localStorage.removeItem('kiosk_session_id'); } catch (e) {}
+                    location.href = 'login.html' + window.location.search;
+                    return;
+                }
+
+                var u = j.user || {};
+                var full = ((u.firstname || '') + ' ' + (u.lastname || '')).trim();
+                document.getElementById('whoName').textContent = full || u.username || 'Siswa';
+                document.getElementById('whoSub').textContent = u.username
+                    ? u.username + ' · bukan Anda? tekan Keluar'
+                    : 'bukan Anda? tekan Keluar';
+
+                // Attempt aktif TIDAK me-redirect otomatis: siswa harus sempat
+                // memastikan dia login sebagai dirinya sendiri sebelum masuk
+                // ujian. Status "lanjutkan" kini datang dari availability
+                // bikinan server, bukan ditebak ulang di sini.
+
+                list.innerHTML = '';
+                if (!j.exams || !j.exams.length) {
+                    list.appendChild(el('div', 'k-card k-muted', 'Belum ada ujian yang tersedia untuk Anda.'));
+                    return;
+                }
+                j.exams.forEach(function (t) {
+                    list.appendChild(examCard(t));
+                });
+
+                // Sesudah ujian selesai, kiosk sengaja TIDAK lepas sendiri. Siswa
+                // yang sudah balik ke beranda tetap butuh jalan keluar yang jelas.
+                if (window.CommsBridge && window.CBTKioskHasFinishedExam && window.CBTKioskHasFinishedExam()) {
+                    var exitCard = el('div', 'k-card');
+                    exitCard.appendChild(el('h3', null, 'Selesai mengerjakan?'));
+                    exitCard.appendChild(el('p', 'k-muted', 'Keluar dari mode ujian dan kembalikan perangkat kepada pengawas.'));
+                    var exitBtn = el('button', 'k-btn');
+                    exitBtn.type = 'button';
+                    exitBtn.textContent = 'Keluar dari Ujian';
+                    exitBtn.onclick = function () {
+                        if (!window.CBTKioskRequestExit || !window.CBTKioskRequestExit()) return;
+                        exitBtn.disabled = true;
+                        exitBtn.textContent = 'Melepas kunci ujian…';
+                        window.addEventListener('exit_denied', function onDenied() {
+                            window.removeEventListener('exit_denied', onDenied);
+                            exitBtn.disabled = false;
+                            exitBtn.textContent = 'Keluar dari Ujian';
+                            exitCard.appendChild(el('div', 'k-note k-error', 'Kunci ujian belum bisa dilepas. Minta bantuan pengawas.'));
+                        });
+                    };
+                    exitCard.appendChild(exitBtn);
+                    list.appendChild(exitCard);
+                }
+            })
+            .catch(function () {
+                showError('Tidak dapat terhubung ke server. Periksa koneksi lalu coba lagi.', true);
+            });
+
+        document.getElementById('btnLogout').addEventListener('click', function () {
+            if (!confirm('Keluar dari akun ini?')) return;
+            var btn = this;
+            btn.disabled = true;
+            btn.textContent = 'Keluar…';
+            fetch(base + '/logout', {
+                method: 'POST',
+                credentials: 'include',
+                headers: { 'Accept': 'application/json', 'X-Requested-With': 'kiosk-bundle' }
+            }).then(function () {
+                try { localStorage.removeItem('kiosk_session_id'); } catch (e) {}
+                location.href = 'login.html' + window.location.search;
+            }).catch(function () {
+                // Sesi server mungkin sudah hilang; tetap kembalikan ke login.
+                try { localStorage.removeItem('kiosk_session_id'); } catch (e) {}
+                location.href = 'login.html' + window.location.search;
+            });
+        });
+    })();
+</script>
+</body></html>
+
+<!-- DEBUG-VIEW ENDED 7 APPPATH\Views\bundle\dashboard.php -->

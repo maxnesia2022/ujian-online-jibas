@@ -1,0 +1,146 @@
+<?php
+
+namespace Config;
+
+use CodeIgniter\Config\Filters as BaseFilters;
+use App\Filters\AuthFilter;
+use App\Filters\MultiLoginFilter;
+use App\Filters\RoleFilter;
+use App\Filters\CorsApiFilter;
+use CodeIgniter\Filters\Cors;
+use CodeIgniter\Filters\CSRF;
+use CodeIgniter\Filters\DebugToolbar;
+use CodeIgniter\Filters\ForceHTTPS;
+use CodeIgniter\Filters\Honeypot;
+use CodeIgniter\Filters\InvalidChars;
+use CodeIgniter\Filters\PageCache;
+use CodeIgniter\Filters\PerformanceMetrics;
+use CodeIgniter\Filters\SecureHeaders;
+
+class Filters extends BaseFilters
+{
+    /**
+     * Configures aliases for Filter classes to
+     * make reading things nicer and simpler.
+     *
+     * @var array<string, class-string|list<class-string>>
+     *
+     * [filter_name => classname]
+     * or [filter_name => [classname1, classname2, ...]]
+     */
+    public array $aliases = [
+        'csrf'          => CSRF::class,
+        'toolbar'       => DebugToolbar::class,
+        'honeypot'      => Honeypot::class,
+        'invalidchars'  => InvalidChars::class,
+        'secureheaders' => SecureHeaders::class,
+        'cors'          => Cors::class,
+        'forcehttps'    => ForceHTTPS::class,
+        'pagecache'     => PageCache::class,
+        'performance'   => PerformanceMetrics::class,
+        'auth'          => AuthFilter::class,
+        'role'          => RoleFilter::class,
+        'multilogin'    => MultiLoginFilter::class,
+        'corsapi'       => CorsApiFilter::class,
+        'csrfheader'    => \App\Filters\CsrfHeaderFilter::class,
+        'loginratelimit'=> \App\Filters\LoginRateLimitFilter::class,
+        'apiratelimit'  => \App\Filters\ApiRateLimitFilter::class,
+        'kioskcsrflogin' => \App\Filters\KioskOriginCsrfFilter::class,
+    ];
+
+    /**
+     * List of special required filters.
+     *
+     * The filters listed here are special. They are applied before and after
+     * other kinds of filters, and always applied even if a route does not exist.
+     *
+     * Filters set by default provide framework functionality. If removed,
+     * those functions will no longer work.
+     *
+     * @see https://codeigniter.com/user_guide/incoming/filters.html#provided-filters
+     *
+     * @var array{before: list<string>, after: list<string>}
+     */
+    public array $required = [
+        'before' => [
+            'forcehttps', // Force Global Secure Requests
+            'pagecache',  // Web Page Caching
+        ],
+        'after' => [
+            'pagecache',   // Web Page Caching
+            'performance', // Performance Metrics
+            'toolbar',     // Debug Toolbar
+            // CORS headers harus ada bahkan saat before-filter short-circuit
+            // (401 AuthFilter / 429 rate-limit): respon tersebut dilewati
+            // controller, sehingga $filters['after'] tidak sempat dijalankan.
+            'corsapi',
+        ],
+    ];
+
+    /**
+     * List of filter aliases that are always
+     * applied before and after every request.
+     *
+     * @var array{
+     *     before: array<string, array{except: list<string>|string}>|list<string>,
+     *     after: array<string, array{except: list<string>|string}>|list<string>
+     * }
+     */
+    public array $globals = [
+        'before' => [
+            'csrf' => ['except' => [
+                'login',
+                // logout dijaga kioskcsrflogin: origin kiosk di-skip (CORS allowlist
+                // yang membatasi), origin lain tetap diverifikasi CSRF di sana.
+                'logout',
+                'student/exam/stream/*',
+                'api/exam/stream/*',
+                'api/intruder/report',
+                'api/kiosk/verify-exit',
+                'api/kiosk/can-exit',
+                'api/kiosk/offline-exit-log',
+                // Rute API kiosk: kioskcsrflogin (KioskOriginCsrfFilter) yang
+                // menjaga — skip CSRF hanya untuk origin kiosk (validasi Origin
+                // di CorsApiFilter); origin lain tetap diverifikasi di sana.
+                'api/exam/*',
+                'api/student/*',
+            ]],
+            'multilogin' => ['except' => ['login', 'logout', 'maintenance', 'health', 'student/exam/stream/*', 'api/exam/stream/*']],
+        ],
+        'after' => [
+            'secureheaders',
+            'csrfheader',
+        ],
+    ];
+
+    /**
+     * List of filter aliases that works on a
+     * particular HTTP method (GET, POST, etc.).
+     *
+     * Example:
+     * 'POST' => ['foo', 'bar']
+     *
+     * If you use this, you should disable auto-routing because auto-routing
+     * permits any HTTP method to access a controller. Accessing the controller
+     * with a method you don't expect could bypass the filter.
+     *
+     * @var array<string, list<string>>
+     */
+    public array $methods = [];
+
+    /**
+     * List of filter aliases that should run on any
+     * before or after URI patterns.
+     *
+     * Example:
+     * 'isLoggedIn' => ['before' => ['account/*', 'profiles/*']]
+     *
+     * @var array<string, array<string, list<string>>>
+     */
+    public array $filters = [
+        'corsapi'        => ['before' => ['api/exam/*', 'api/student/*', 'login', 'logout'], 'after' => ['api/exam/*', 'api/student/*', 'login', 'logout']],
+        'loginratelimit' => ['before' => ['login']],
+        'apiratelimit'   => ['before' => ['api/*']],
+        'kioskcsrflogin' => ['before' => ['login', 'logout', 'api/exam/*', 'api/student/*']],
+    ];
+}

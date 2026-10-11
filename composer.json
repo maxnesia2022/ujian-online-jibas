@@ -1,0 +1,46 @@
+{
+    "name": "rozendev/cbt-mf",
+    "description": "Sistem Ujian Berbasis Komputer (CBT) dengan WebSocket real-time dan mode kiosk",
+    "license": "AGPL-3.0-or-later",
+    "type": "project",
+    "homepage": "https://github.com/rozendev/CBT-MF",
+    "support": {
+        "issues": "https://github.com/rozendev/CBT-MF/issues",
+        "source": "https://github.com/rozendev/CBT-MF"
+    },
+    "require": {
+        "php": "^8.2",
+        "cboden/ratchet": "^0.4.4",
+        "clue/redis-react": "^2.8",
+        "codeigniter4/framework": "^4.7",
+        "phpoffice/phpspreadsheet": "^5.7",
+        "phpoffice/phpword": "^1.4"
+    },
+    "require-dev": {
+        "fakerphp/faker": "^1.9",
+        "mikey179/vfsstream": "^1.6",
+        "phpunit/phpunit": "^10.5.16"
+    },
+    "autoload": {
+        "psr-4": {
+            "App\\": "app/",
+            "Config\\": "app/Config/"
+        },
+        "exclude-from-classmap": [
+            "**/Database/Migrations/**"
+        ]
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Tests\\Support\\": "tests/_support"
+        }
+    },
+    "config": {
+        "optimize-autoloader": true,
+        "preferred-install": "dist",
+        "sort-packages": true
+    },
+    "scripts": {
+        "test": "phpunit"
+    }
+}

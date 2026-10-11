@@ -1,0 +1,387 @@
+<!-- DEBUG-VIEW START 12 APPPATH\Views\bundle\results.php -->
+<!-- DEBUG-VIEW START 10 APPPATH\Views\bundle\_head.php -->
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <script src="assets/kiosk-integration.js"></script>
+    <link rel="stylesheet" href="assets/exam-app.css?v=65afaef2661f">
+    <script>
+        window.KIOSK_BUNDLE = true;
+        window.__KIOSK_BUNDLE__ = true;
+        (function () {
+            var params = new URLSearchParams(window.location.search);
+            var serverParam = params.get('server');
+            var savedServer = null;
+            try { savedServer = localStorage.getItem('kiosk_base_url'); } catch (e) {}
+            var resolvedBase = serverParam || savedServer || "http:\/\/192.168.43.153:8080";
+            if (resolvedBase) {
+                try { localStorage.setItem('kiosk_base_url', resolvedBase); } catch (e) {}
+            }
+            window.KIOSK_BASE_URL = resolvedBase;
+        })();
+        window.KIOSK_WS_URL = "ws:\/\/192.168.43.153:8060\/ws";
+
+        // Sinkronisasi sesi Kiosk WebView (cross-origin / debug mode):
+        // Otomatis sertakan X-Session-ID dan Authorization header pada setiap request fetch,
+        // menjamin autentikasi sesi tetap aktif walau cookie pihak ketiga diblokir oleh WebView.
+        (function () {
+            var origFetch = window.fetch;
+            window.fetch = function (url, options) {
+                options = options || {};
+                var sessId = null;
+                try { sessId = localStorage.getItem('kiosk_session_id'); } catch (e) {}
+                if (sessId) {
+                    options.headers = options.headers || {};
+                    if (options.headers instanceof Headers) {
+                        if (!options.headers.has('X-Session-ID')) options.headers.append('X-Session-ID', sessId);
+                        if (!options.headers.has('Authorization')) options.headers.append('Authorization', 'Bearer ' + sessId);
+                    } else if (Array.isArray(options.headers)) {
+                        options.headers.push(['X-Session-ID', sessId]);
+                        options.headers.push(['Authorization', 'Bearer ' + sessId]);
+                    } else {
+                        if (!options.headers['X-Session-ID']) options.headers['X-Session-ID'] = sessId;
+                        if (!options.headers['Authorization']) options.headers['Authorization'] = 'Bearer ' + sessId;
+                    }
+                }
+                return origFetch.call(this, url, options);
+            };
+        })();
+    </script>
+    <style>
+        /* Design system kiosk — kontras tinggi, target sentuh besar.
+           Sasaran: HP kelas bawah (mis. Redmi 10A 720x1600) dengan layar redup,
+           dipakai siswa yang gugup. Prioritas: keterbacaan > dekorasi.
+           Tanpa webfont (anggaran bundle); hanya system font stack. */
+        :root {
+            --kiosk-bg: #f1f5f9; --kiosk-card: #ffffff; --kiosk-ink: #0f172a;
+            --kiosk-muted: #475569; --kiosk-primary: #1d4ed8; --kiosk-primary-ink: #ffffff;
+            --kiosk-border: #cbd5e1; --kiosk-danger: #b91c1c; --kiosk-danger-bg: #fef2f2;
+            --kiosk-ok: #15803d; --kiosk-ok-bg: #f0fdf4; --kiosk-warn: #a16207;
+            --kiosk-ink-soft: #334155; --kiosk-surface-2: #f8fafc;
+            --kiosk-shadow: 0 1px 2px rgba(15, 23, 42, .06), 0 8px 24px rgba(15, 23, 42, .06);
+            /* Target sentuh minimum Android 48dp; 56px untuk aksi utama. */
+            --k-tap: 56px; --k-radius: 12px; --k-gap: 16px;
+            /* Poni dan bilah gestur Android: tanpa ini header nyelip di balik
+               status bar dan tombol terakhir ketiban bilah navigasi. */
+            --k-safe-top: env(safe-area-inset-top, 0px);
+            --k-safe-bottom: env(safe-area-inset-bottom, 0px);
+        }
+        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+        body {
+            margin: 0; background: var(--kiosk-bg); color: var(--kiosk-ink);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            font-size: 17px; line-height: 1.55;
+            -webkit-text-size-adjust: 100%;
+        }
+        .k-wrap { max-width: 560px; margin: 0 auto; padding: var(--k-gap);
+                  padding-bottom: calc(var(--k-gap) + var(--k-safe-bottom)); }
+        .k-card { background: var(--kiosk-card); border: 1px solid var(--kiosk-border);
+                  border-radius: var(--k-radius); padding: 20px; box-shadow: var(--kiosk-shadow); }
+
+        /* ── App bar: identitas sekolah, sama di semua halaman ──────────────
+           Alasannya bukan hiasan. Perangkat ujian dipegang siswa yang gugup di
+           ruangan asing; layar yang tidak menyebut sekolahnya terasa seperti
+           halaman uji coba, bukan lembar ujian resmi. */
+        .k-appbar {
+            display: flex; align-items: center; gap: 12px;
+            padding: calc(10px + var(--k-safe-top)) var(--k-gap) 10px;
+            background: var(--kiosk-card); border-bottom: 1px solid var(--kiosk-border);
+        }
+        .k-appbar__logo { width: 38px; height: 38px; flex: 0 0 auto;
+                          object-fit: contain; border-radius: 8px; }
+        .k-appbar__id { flex: 1; min-width: 0; }
+        .k-appbar__school { font-weight: 700; font-size: 16px; line-height: 1.25;
+                            white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .k-appbar__tagline { color: var(--kiosk-muted); font-size: 12px; letter-spacing: .02em;
+                             white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+        /* Judul halaman: konteks "saya sedang di mana" tanpa memakan satu layar. */
+        .k-pagehead { margin-bottom: var(--k-gap); }
+        .k-pagehead h1 { margin: 0 0 2px; }
+        .k-pagehead p { margin: 0; color: var(--kiosk-muted); font-size: 15px; }
+        h1, h2, h3 { margin: 0 0 12px; line-height: 1.3; }
+        h1 { font-size: 24px; } h2 { font-size: 20px; } h3 { font-size: 18px; }
+        .k-muted { color: var(--kiosk-muted); font-size: 15px; }
+
+        /* Tombol: tinggi penuh, teks 17px, tidak pernah mengecil di layar sempit. */
+        .k-btn {
+            display: flex; align-items: center; justify-content: center; gap: 8px;
+            width: 100%; min-height: var(--k-tap); padding: 12px 18px;
+            background: var(--kiosk-primary); color: var(--kiosk-primary-ink);
+            border: 0; border-radius: var(--k-radius);
+            font-size: 17px; font-weight: 600; font-family: inherit;
+            cursor: pointer; text-decoration: none;
+        }
+        .k-btn:active { filter: brightness(.92); }
+        .k-btn:disabled { opacity: .5; }
+        .k-btn--ghost { background: transparent; color: var(--kiosk-primary);
+                        border: 2px solid var(--kiosk-border); }
+        .k-btn--danger { background: var(--kiosk-danger); }
+        .k-btn--sm { min-height: 48px; font-size: 16px; width: auto; padding: 10px 16px; }
+
+        .k-input {
+            width: 100%; min-height: var(--k-tap); padding: 14px;
+            border: 2px solid var(--kiosk-border); border-radius: var(--k-radius);
+            font-size: 17px; font-family: inherit; background: #fff; color: inherit;
+        }
+        .k-input:focus { outline: none; border-color: var(--kiosk-primary); }
+        .k-label { display: block; font-weight: 600; font-size: 15px; margin-bottom: 6px; }
+
+        /* Kotak status: dipakai untuk error/sukses/info yang harus terbaca jelas. */
+        .k-note { border-radius: 10px; padding: 14px; font-size: 16px; border: 1px solid; }
+        .k-error { color: var(--kiosk-danger); background: var(--kiosk-danger-bg); border-color: #fecaca; }
+        .k-ok { color: var(--kiosk-ok); background: var(--kiosk-ok-bg); border-color: #bbf7d0; }
+
+        /* Bar identitas: siswa harus selalu tahu login sebagai siapa. */
+        .k-idbar {
+            display: flex; align-items: center; gap: 12px;
+            background: var(--kiosk-card); border-bottom: 1px solid var(--kiosk-border);
+            padding: 12px var(--k-gap);
+        }
+        .k-idbar__who { flex: 1; min-width: 0; }
+        .k-idbar__name { font-weight: 700; font-size: 16px;
+                         white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .k-idbar__sub { color: var(--kiosk-muted); font-size: 13px;
+                        white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+        /* Banner status simpan — menempel di atas viewport dan TIDAK hilang
+           sendiri; satu-satunya cara lenyap adalah jawaban berhasil tersimpan. */
+        /* sticky, bukan fixed: sebagai fixed banner ini menimpa bagian atas
+           soal justru ketika siswa paling perlu membacanya. Sticky tetap
+           menempel saat digulir tapi ikut memakan ruang, jadi tidak ada yang
+           tertutup. */
+        .k-savebar {
+            position: sticky; top: 0; z-index: 9999;
+            padding: 12px var(--k-gap); border-bottom: 3px solid;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, .18);
+        }
+        .k-savebar--bad { background: #fee2e2; border-color: var(--kiosk-danger); color: #7f1d1d; }
+        .k-savebar__title { font-weight: 700; font-size: 17px; }
+        .k-savebar__msg { font-size: 14px; margin-top: 2px; }
+
+        /* Toast peredam aksi (cadangan non-kiosk) — melayang di bawah agar
+           tidak menutupi soal maupun banner status simpan di atas. */
+        .k-ratetoast {
+            position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%);
+            z-index: 9998; max-width: 88vw;
+            background: rgba(15, 23, 42, .94); color: #fff;
+            padding: 12px 18px; border-radius: 999px;
+            font-size: 15px; text-align: center;
+            box-shadow: 0 4px 14px rgba(0, 0, 0, .25);
+        }
+
+        /* Konten dari editor guru (soal, jawaban esai, kunci) bebas isinya:
+           gambar berukuran asli, tabel lebar, kata panjang tanpa spasi. Tanpa
+           pagar ini semuanya menembus kartu dan bikin halaman melar ke samping. */
+        .k-card { overflow-wrap: anywhere; }
+        .k-card img, .k-note img {
+            max-width: 100%; height: auto; display: block;
+            margin: 12px 0; border: 1px solid var(--kiosk-border);
+            border-radius: 10px; background: #fff;
+        }
+        /* Tabel lebar digulir di dalam kartunya sendiri, bukan menggeser halaman. */
+        .k-card table { max-width: 100%; border-collapse: collapse; }
+        .k-card .table-responsive { max-width: 100%; overflow-x: auto; }
+        .k-card pre { max-width: 100%; overflow-x: auto; }
+
+        .k-row { display: flex; gap: 12px; }
+        .k-row > * { flex: 1; }
+        .k-stack > * + * { margin-top: 12px; }
+    </style>
+</head>
+
+<!-- DEBUG-VIEW ENDED 10 APPPATH\Views\bundle\_head.php -->
+<body>
+<!-- DEBUG-VIEW START 11 APPPATH\Views\bundle\_appbar.php -->
+<header class="k-appbar">
+        <div class="k-appbar__id">
+        <div class="k-appbar__school">Sistem Ujian</div>
+            </div>
+</header>
+
+<!-- DEBUG-VIEW ENDED 11 APPPATH\Views\bundle\_appbar.php -->
+<div class="k-wrap">
+    <div class="k-pagehead">
+        <h1 id="pageTitle">Hasil Ujian</h1>
+        <p id="pageSubtitle">Ringkasan pengerjaan Anda.</p>
+    </div>
+    <div id="summary" class="k-card k-muted">Memuat hasil…</div>
+    <div id="actions" class="k-stack" style="margin-top:16px"></div>
+</div>
+
+<script>
+    (function () {
+        var base = window.KIOSK_BASE_URL;
+        var params = new URLSearchParams(location.search);
+        var testId = params.get('test_id') || '';
+        // finished=1 → siswa BARU saja menekan "Akhiri Ujian". Di titik ini kiosk
+        // masih terkunci: siswa yang memilih mau lihat nilai/review dulu atau
+        // langsung keluar, bukan aplikasi yang memutuskan.
+        var justFinished = params.get('finished') === '1';
+        var box = document.getElementById('summary');
+        var actions = document.getElementById('actions');
+
+        function el(tag, cls, text) {
+            var n = document.createElement(tag);
+            if (cls) n.className = cls;
+            if (text !== undefined && text !== null) n.textContent = text;
+            return n;
+        }
+
+        function button(label, cls, onClick) {
+            var b = el('button', cls || 'k-btn', label);
+            b.type = 'button';
+            b.onclick = onClick;
+            return b;
+        }
+
+        function backButton(label) {
+            return button(label || 'Kembali ke Beranda', 'k-btn k-btn--ghost', function () {
+                location.href = 'dashboard.html';
+            });
+        }
+
+        function inKiosk() {
+            return !!window.CommsBridge;
+        }
+
+        function exitKiosk(btn) {
+            if (!window.CBTKioskRequestExit || !window.CBTKioskRequestExit()) {
+                alert('Aplikasi ujian tidak merespons. Panggil pengawas.');
+                return;
+            }
+            btn.disabled = true;
+            btn.textContent = 'Melepas kunci ujian…';
+            // Kalau server menolak, event exit_denied yang mengembalikan tombolnya.
+            window.addEventListener('exit_denied', function onDenied() {
+                window.removeEventListener('exit_denied', onDenied);
+                btn.disabled = false;
+                btn.textContent = 'Keluar dari Ujian';
+                var note = el('div', 'k-note k-error', 'Kunci ujian belum bisa dilepas. Minta bantuan pengawas.');
+                actions.insertBefore(note, actions.firstChild);
+            });
+        }
+
+        function exitButton() {
+            var b = button('Keluar dari Ujian', 'k-btn', function () { exitKiosk(b); });
+            return b;
+        }
+
+        // Blok nilai dibangun terpisah supaya bisa disembunyikan sampai siswa
+        // menekan "Lihat Nilai" pada layar sesudah ujian.
+        function scoreBlock(summary) {
+            var wrap = el('div');
+
+            var score = el('div', null, String(summary.score));
+            score.style.cssText = 'font-size:40px;font-weight:800;line-height:1.1';
+            wrap.appendChild(score);
+            wrap.appendChild(el('div', 'k-muted', 'dari ' + summary.max_score));
+
+            var stats = el('div');
+            stats.style.cssText = 'display:flex;gap:8px;margin-top:16px;text-align:center';
+            [
+                ['Benar', summary.correct, 'var(--kiosk-ok)'],
+                ['Salah', summary.wrong, 'var(--kiosk-danger)'],
+                ['Kosong', summary.unanswered, 'var(--kiosk-muted)']
+            ].forEach(function (s) {
+                var cell = el('div');
+                cell.style.cssText = 'flex:1;border:1px solid var(--kiosk-border);border-radius:10px;padding:10px';
+                var n = el('div', null, String(s[1]));
+                n.style.cssText = 'font-size:22px;font-weight:700;color:' + s[2];
+                cell.appendChild(n);
+                cell.appendChild(el('div', 'k-muted', s[0]));
+                stats.appendChild(cell);
+            });
+            wrap.appendChild(stats);
+            return wrap;
+        }
+
+        function reviewButton() {
+            return button('Review Jawaban', 'k-btn', function () {
+                location.href = 'review.html?test_id=' + encodeURIComponent(testId);
+            });
+        }
+
+        function render(j) {
+            box.className = 'k-card';
+            box.innerHTML = '';
+            actions.innerHTML = '';
+
+            if (j.status !== 'success') {
+                box.appendChild(el('div', 'k-note k-error', j.message || 'Gagal memuat hasil.'));
+                if (justFinished && inKiosk()) actions.appendChild(exitButton());
+                actions.appendChild(backButton());
+                return;
+            }
+
+            if (j.test && j.test.name) box.appendChild(el('h3', null, j.test.name));
+
+            if (justFinished) {
+                document.getElementById('pageTitle').textContent = 'Ujian Selesai';
+                document.getElementById('pageSubtitle').textContent = 'Pilih tindakan sebelum keluar dari mode ujian.';
+                box.appendChild(el('p', null, 'Jawaban Anda sudah tersimpan.'));
+
+                if (!j.show_score && !j.allow_review) {
+                    box.appendChild(el('p', 'k-muted', 'Nilai dan pembahasan tidak ditampilkan untuk ujian ini.'));
+                } else {
+                    box.appendChild(el('p', 'k-muted', 'Pilih tindakan selanjutnya di bawah.'));
+                }
+
+                if (j.show_score) {
+                    var holder = el('div');
+                    holder.style.marginTop = '16px';
+                    holder.style.display = 'none';
+                    holder.appendChild(scoreBlock(j.summary));
+                    box.appendChild(holder);
+
+                    var seeScore = button('Lihat Nilai', 'k-btn', function () {
+                        holder.style.display = '';
+                        seeScore.remove();
+                    });
+                    actions.appendChild(seeScore);
+                }
+
+                if (j.allow_review) actions.appendChild(reviewButton());
+                if (inKiosk()) actions.appendChild(exitButton());
+                else actions.appendChild(backButton('Kembali ke Beranda'));
+                return;
+            }
+
+            // Dibuka lagi dari daftar ujian: tampilkan hasil apa adanya.
+            if (j.show_score) {
+                box.appendChild(scoreBlock(j.summary));
+            } else {
+                box.appendChild(el('p', null, 'Ujian Anda sudah selesai dan tersimpan.'));
+                box.appendChild(el('p', 'k-muted', 'Nilai tidak ditampilkan untuk ujian ini.'));
+            }
+
+            if (j.allow_review) actions.appendChild(reviewButton());
+            if (inKiosk() && window.CBTKioskHasFinishedExam && window.CBTKioskHasFinishedExam()) {
+                actions.appendChild(exitButton());
+            }
+            actions.appendChild(backButton());
+        }
+
+        fetch(base + '/api/student/review?test_id=' + encodeURIComponent(testId), {
+            credentials: 'include', headers: { 'Accept': 'application/json' }
+        })
+            .then(function (r) { return r.json(); })
+            .then(render)
+            .catch(function () {
+                box.className = 'k-card';
+                box.innerHTML = '';
+                box.appendChild(el('div', 'k-note k-error', 'Tidak dapat terhubung ke server.'));
+                var retry = button('Coba Lagi', 'k-btn', function () { location.reload(); });
+                retry.style.marginTop = '12px';
+                box.appendChild(retry);
+                actions.innerHTML = '';
+                if (justFinished && inKiosk()) actions.appendChild(exitButton());
+                actions.appendChild(backButton());
+            });
+    })();
+</script>
+</body></html>
+
+<!-- DEBUG-VIEW ENDED 12 APPPATH\Views\bundle\results.php -->
